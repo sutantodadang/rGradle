@@ -2,8 +2,11 @@ use crate::config::Config;
 use crate::pom::{PomDependency, parse_pom_model};
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
+use std::cmp::min;
 use std::collections::{HashSet, VecDeque};
 use std::fs;
+use std::io::Write;
+use std::io::stdout;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::fs as async_fs;
@@ -17,7 +20,7 @@ async fn fetch_file_async(url: &str, path: &Path) {
         return;
     }
 
-    let response = match reqwest::get(url).await {
+    let mut response = match reqwest::get(url).await {
         Ok(resp) if resp.status().is_success() => resp,
         Ok(resp) if resp.status().as_u16() == 404 => {
             eprintln!("[WARN] 404 Not Found, skipping: {url}");
@@ -29,16 +32,37 @@ async fn fetch_file_async(url: &str, path: &Path) {
         }
     };
 
-    let bytes = match response.bytes().await {
-        Ok(b) => b,
+    let total_size = response.content_length();
+    let mut file = match async_fs::File::create(path).await {
+        Ok(f) => f,
         Err(_) => {
-            eprintln!("⚠️  Failed to read response body: {url}");
+            eprintln!("⚠️  Failed to create file: {}", path.display());
             return;
         }
     };
+    let mut downloaded: u64 = 0;
 
-    if let Ok(mut file) = async_fs::File::create(path).await {
-        let _ = file.write_all(&bytes).await;
+    while let Ok(Some(chunk)) = response.chunk().await {
+        if let Err(_) = file.write_all(&chunk).await {
+            eprintln!("⚠️  Failed to write to file: {}", path.display());
+            return;
+        }
+        downloaded += chunk.len() as u64;
+        if let Some(total) = total_size {
+            let percent = min(100, (downloaded * 100 / total) as u64);
+            print!(
+                "\rDownloading: {} [{:3}%]",
+                path.file_name().unwrap().to_string_lossy(),
+                percent
+            );
+            let _ = stdout().flush();
+        }
+    }
+    if total_size.is_some() {
+        println!(
+            "\rDownloading: {} [100%]",
+            path.file_name().unwrap().to_string_lossy()
+        );
     }
 }
 
