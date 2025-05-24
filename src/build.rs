@@ -3,7 +3,7 @@ use std::fs;
 use std::process::Command;
 
 pub fn build_project(config: &Config) {
-    let source_dir = config.project.source_dir.clone().unwrap_or_default(); // Adjust this to your source directory
+    let source_dir = config.project.source_dir.clone().unwrap_or_default();
     let target_dir = config.project.output_dir.clone().unwrap_or_default();
 
     fs::create_dir_all(&target_dir).expect("Failed to create target/classes");
@@ -24,15 +24,26 @@ pub fn build_project(config: &Config) {
     // Incremental build: only recompile if .java is newer than .class or .class is missing
     let mut to_compile = Vec::new();
     for java_file in &java_files {
-        // Compute relative path from source_dir
-        let rel_path = java_file.strip_prefix(&source_dir).unwrap_or(java_file);
-        // Change extension to .class
+        // Get the full path relative to source root (example/main/java)
+        let source_root = std::path::Path::new(&source_dir)
+            .parent()
+            .and_then(|p| p.parent())
+            .unwrap_or(std::path::Path::new(&source_dir));
+        let rel_path = java_file.strip_prefix(source_root).unwrap_or(java_file);
+
+        // Change extension to .class while maintaining full package path
         let class_file = {
             let mut p = std::path::PathBuf::from(&target_dir);
             p.push(rel_path);
             p.set_extension("class");
             p
         };
+
+        // Create parent directories for the class file if they don't exist
+        if let Some(parent) = class_file.parent() {
+            fs::create_dir_all(parent).expect("Failed to create output directory structure");
+        }
+
         let needs_recompile = match (std::fs::metadata(java_file), std::fs::metadata(&class_file)) {
             (Ok(java_meta), Ok(class_meta)) => {
                 let java_mtime = java_meta
@@ -41,13 +52,21 @@ pub fn build_project(config: &Config) {
                 let class_mtime = class_meta
                     .modified()
                     .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+
                 java_mtime > class_mtime
             }
-            (Ok(_), Err(_)) => true, // .class missing
-            _ => true,               // .java missing or error, be conservative
+            (Ok(_), Err(_)) => {
+                println!("Class file missing, needs compilation");
+                true
+            }
+            _ => {
+                println!("Error reading file metadata, defaulting to rebuild");
+                true
+            }
         };
+
         if needs_recompile {
-            to_compile.push(java_file.clone());
+            to_compile.push(java_file);
         }
     }
 
@@ -69,9 +88,8 @@ pub fn build_project(config: &Config) {
                 .map(|p| p.to_string_lossy().to_string())
                 .collect::<Vec<_>>()
         })
-        .filter(|v| !v.is_empty())
-        .map(|v| v.join(sep))
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .join(sep);
 
     let mut cmd = Command::new("javac");
     cmd.arg("-d").arg(&target_dir);
