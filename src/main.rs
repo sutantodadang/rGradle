@@ -2,6 +2,7 @@ mod build;
 mod cli;
 mod config;
 mod fetch;
+mod package;
 mod pom;
 mod run;
 mod test;
@@ -99,6 +100,14 @@ test_output_dir = "build/test-classes"
             println!("Running tests...");
             let cfg = load_config();
             test::test_project(&cfg);
+        }
+
+        Commands::Package { uber } => {
+            println!("Packaging project{}", if uber { " (uber JAR)" } else { "" });
+            let cfg = load_config();
+            if let Err(e) = package::package_project(&cfg, uber) {
+                eprintln!("✗ Packaging failed: {}", e);
+            }
         }
     }
 }

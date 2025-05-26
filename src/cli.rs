@@ -27,4 +27,10 @@ pub enum Commands {
 
     /// Run the project tests
     Test,
+
+    /// Package the application into a JAR
+    Package {
+        #[arg(long)]
+        uber: bool,
+    },
 }
