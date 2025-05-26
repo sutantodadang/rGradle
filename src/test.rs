@@ -1,114 +1,104 @@
 use crate::config::Config;
+use std::path::Path;
 use std::process::Command;
+use walkdir::WalkDir;
 
-pub fn test_project(config: &Config) {
-    let test_dir = config
-        .project
-        .test_dir
-        .clone()
-        .unwrap_or_else(|| "example/test/java".to_string());
-    let test_output_dir = config
-        .project
-        .test_output_dir
-        .clone()
-        .unwrap_or_else(|| "build/test-classes".to_string());
-    let main_output_dir = config
-        .project
-        .output_dir
-        .clone()
-        .unwrap_or_else(|| "build".to_string());
+fn find_test_classes(dir: &str) -> Vec<String> {
+    let mut test_classes = Vec::new();
 
-    // Create test output directory
-    std::fs::create_dir_all(&test_output_dir).expect("Failed to create test output directory");
-
-    // Find all test files
-    let test_files = walkdir::WalkDir::new(&test_dir)
+    for entry in WalkDir::new(dir)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().to_string_lossy().ends_with("Test.java"))
-        .map(|e| e.path().to_owned())
-        .collect::<Vec<_>>();
-
-    if test_files.is_empty() {
-        println!("No test files found.");
-        return;
+        .filter(|e| {
+            e.path()
+                .file_name()
+                .map_or(false, |n| n.to_string_lossy().ends_with("Test.java"))
+        })
+    {
+        // Convert path/to/com/example/Test.java to com.example.Test
+        if let Some(rel_path) = entry.path().strip_prefix(dir).ok() {
+            if let Some(path_str) = rel_path.to_str() {
+                let class_name = path_str
+                    .trim_end_matches(".java")
+                    .replace('\\', ".")
+                    .replace('/', ".");
+                test_classes.push(class_name);
+            }
+        }
     }
 
-    println!("Compiling tests...");
+    test_classes
+}
 
-    // Collect all JARs (including JUnit) in .rgradle/cache for test classpath
-    let cache_dir = ".rgradle/cache";
-    let sep = if cfg!(windows) { ";" } else { ":" };
-    let jar_classpath = std::fs::read_dir(cache_dir)
-        .ok()
-        .map(|entries| {
-            entries
-                .filter_map(|e| e.ok())
-                .map(|e| e.path())
-                .filter(|p| p.extension().map_or(false, |ext| ext == "jar"))
-                .map(|p| p.to_string_lossy().to_string())
-                .collect::<Vec<_>>()
-        })
-        .filter(|v| !v.is_empty())
-        .map(|v| v.join(sep))
-        .unwrap_or_default();
+pub fn test_project(config: &Config) {
+    // Get test output directory from config
+    let test_output = config
+        .test
+        .as_ref()
+        .and_then(|t| t.output.as_deref())
+        .unwrap_or("build/classes/java/test");
 
-    // Compile tests with main classes in classpath
-    let mut cmd = Command::new("javac");
-    cmd.arg("-d").arg(&test_output_dir);
+    // Get main output directory for test classpath
+    let main_output = config
+        .main
+        .as_ref()
+        .and_then(|m| m.output.as_deref())
+        .unwrap_or("build/classes/java/main");
 
-    // Include both test dependencies and main classes in classpath
-    let compile_classpath = format!("{}{}{}", main_output_dir, sep, jar_classpath);
+    // Find test classes
+    let mut test_classes = Vec::new();
+    for entry in WalkDir::new(test_output).into_iter().filter_map(|e| e.ok()) {
+        if entry.path().extension().map_or(false, |ext| ext == "class")
+            && entry.path().to_string_lossy().contains("Test")
+        {
+            // Convert file path to Java class name (com.example.MainTest)
+            if let Ok(rel_path) = entry.path().strip_prefix(test_output) {
+                let class_path = rel_path.with_extension("");
+                let class_name = class_path
+                    .to_string_lossy()
+                    .replace('\\', ".")
+                    .replace('/', ".");
+                test_classes.push(class_name.to_string());
+            }
+        }
+    }
 
-    cmd.arg("-cp").arg(&compile_classpath);
-    cmd.args(&test_files);
-
-    let status = cmd.status().expect("Failed to compile tests");
-
-    if !status.success() {
-        eprintln!("✗ Test compilation failed.");
+    if test_classes.is_empty() {
+        println!("No test classes found.");
         return;
     }
 
     println!("Running tests...");
 
-    // Run tests with JUnit
+    // Build classpath: main classes + test classes + all dependency JARs
+    let sep = if cfg!(windows) { ";" } else { ":" };
+    let mut cp_parts = vec![test_output.to_string(), main_output.to_string()];
+
+    // Add all JARs from cache
+    if let Ok(entries) = std::fs::read_dir(".rgradle/cache") {
+        for entry in entries.filter_map(|e| e.ok()) {
+            if entry.path().extension().map_or(false, |ext| ext == "jar") {
+                cp_parts.push(entry.path().to_string_lossy().to_string());
+            }
+        }
+    }
+
+    let classpath = cp_parts.join(sep);
+
+    // Run tests using JUnit
     let mut cmd = Command::new("java");
-
-    // Build complete classpath for test execution
-    let test_classpath = format!(
-        "{}{}{}{}{}",
-        test_output_dir, sep, main_output_dir, sep, jar_classpath
-    );
-
     cmd.arg("-cp")
-        .arg(&test_classpath)
-        .arg("org.junit.runner.JUnitCore");
+        .arg(&classpath)
+        .arg("org.junit.runner.JUnitCore")
+        .args(&test_classes);
 
-    // Add test class names with full package names
-    let test_classes = test_files
-        .iter()
-        .filter_map(|path| {
-            let rel_path = path.strip_prefix(&test_dir).ok()?;
-            let class_name = rel_path
-                .with_extension("")
-                .to_string_lossy()
-                .replace('\\', ".")
-                .replace('/', ".");
-
-            println!("Adding test class: {}", class_name);
-            Some(class_name)
-        })
-        .collect::<Vec<_>>();
-
-    println!("Running JUnit with classpath: {}", test_classpath);
-    println!("Test classes: {:?}", test_classes);
-
-    let status = cmd.status().expect("Failed to run tests");
-
-    if status.success() {
-        println!("✓ All tests passed.");
-    } else {
-        eprintln!("✗ Some tests failed.");
+    match cmd.status() {
+        Ok(status) if status.success() => {
+            println!("✓ All tests passed.");
+        }
+        _ => {
+            eprintln!("✗ Some tests failed.");
+            std::process::exit(1);
+        }
     }
 }
