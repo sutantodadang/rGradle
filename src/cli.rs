@@ -24,4 +24,7 @@ pub enum Commands {
 
     /// Run the Java project (main class must be configured)
     Run,
+
+    /// Run the project tests
+    Test,
 }

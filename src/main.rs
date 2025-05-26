@@ -4,10 +4,11 @@ mod config;
 mod fetch;
 mod pom;
 mod run;
+mod test;
 
 use clap::Parser;
 use cli::{Cli, Commands};
-use config::{Config, load_config};
+use config::load_config;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
@@ -28,9 +29,15 @@ version = "0.1.0"
 main_class = "com.example.Main"
 source_dir = "example/main/java/com/example"
 output_dir = "build"
+test_dir = "example/test/java/com/example"
+test_output_dir = "build/test-classes"
 
 [dependencies]
-#example "junit:junit" = "4.13.2"
+# Main dependencies go here
+# example: "org.slf4j:slf4j-api" = "2.0.9"
+
+[test_dependencies]
+"junit:junit" = "4.13.2"
 "#;
 
             let mut file = fs::File::create("rgradle.toml").expect("Failed to create rgradle.toml");
@@ -86,6 +93,12 @@ output_dir = "build"
             println!("Running Java application...");
             let cfg = load_config();
             run::run_project(&cfg);
+        }
+
+        Commands::Test => {
+            println!("Running tests...");
+            let cfg = load_config();
+            test::test_project(&cfg);
         }
     }
 }
