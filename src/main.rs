@@ -22,16 +22,21 @@ async fn main() {
         Commands::Init => {
             println!("Initializing new rGradle project...");
 
-            // Default configuration file
             let config = r#"
 [project]
 name = "MyJavaApp"
 version = "0.1.0"
 main_class = "com.example.Main"
-source_dir = "example/main/java/com/example"
-output_dir = "build"
-test_dir = "example/test/java/com/example"
-test_output_dir = "build/test-classes"
+
+[main]
+java = ["src/main/java"]
+resources = ["src/main/resources"]
+output = "build/classes/java/main"
+
+[test]
+java = ["src/test/java"]
+resources = ["src/test/resources"]
+output = "build/classes/java/test"
 
 [dependencies]
 # Main dependencies go here
@@ -47,20 +52,33 @@ test_output_dir = "build/test-classes"
 
             let cfg = load_config();
 
-            let src_dir = Path::new(cfg.project.source_dir.as_deref().unwrap_or("src/main/java"));
+            // Create main source and resource directories
+            if let Some(main) = &cfg.main {
+                if let Some(java_dirs) = &main.java {
+                    for dir in java_dirs {
+                        fs::create_dir_all(dir).expect("Failed to create main java directory");
+                    }
+                }
+                if let Some(resource_dirs) = &main.resources {
+                    for dir in resource_dirs {
+                        fs::create_dir_all(dir).expect("Failed to create main resources directory");
+                    }
+                }
+            }
 
-            let src_path = cfg.project.source_dir.clone().unwrap_or_default();
-
-            let src_split = src_path.split("main").collect::<Vec<_>>();
-
-            let src_split = src_split[0].to_string() + "main";
-
-            let src_split = src_split + "/resources";
-
-            let res_dir = Path::new(src_split.as_str());
-
-            fs::create_dir_all(src_dir).expect("Failed to create src directory");
-            fs::create_dir_all(res_dir).expect("Failed to create resources directory");
+            // Create test source and resource directories
+            if let Some(test) = &cfg.test {
+                if let Some(java_dirs) = &test.java {
+                    for dir in java_dirs {
+                        fs::create_dir_all(dir).expect("Failed to create test java directory");
+                    }
+                }
+                if let Some(resource_dirs) = &test.resources {
+                    for dir in resource_dirs {
+                        fs::create_dir_all(dir).expect("Failed to create test resources directory");
+                    }
+                }
+            }
 
             println!("Project structure created.");
             println!("Edit `rgradle.toml` to define your dependencies.");
@@ -81,10 +99,10 @@ test_output_dir = "build/test-classes"
         Commands::Clean => {
             println!("Cleaning build directory...");
             let cfg = load_config();
-            let target_dir = Path::new(cfg.project.output_dir.as_deref().unwrap_or("build"));
-            if target_dir.exists() {
-                fs::remove_dir_all(target_dir).expect("Failed to delete target directory");
-                println!("Deleted target directory.");
+            let build_dir = Path::new("build");
+            if build_dir.exists() {
+                fs::remove_dir_all(build_dir).expect("Failed to delete build directory");
+                println!("Deleted build directory.");
             } else {
                 println!("Nothing to clean.");
             }

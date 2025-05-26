@@ -1,39 +1,42 @@
 use crate::config::Config;
-use std::fs;
 use std::process::Command;
 
 pub fn run_project(config: &Config) {
-    let main_class = &config.project.main_class;
-    let target_dir = config.project.output_dir.clone().unwrap_or_default();
-    let cache_dir = ".rgradle/cache";
+    // Get main output directory
+    let main_output = config
+        .main
+        .as_ref()
+        .and_then(|m| m.output.as_deref())
+        .unwrap_or("build/classes/java/main");
 
-    // Collect all JARs in .rgradle/cache for classpath
-    let mut classpath = target_dir;
-    let jars = fs::read_dir(cache_dir)
-        .ok()
-        .map(|entries| {
-            entries
-                .filter_map(|e| e.ok())
-                .map(|e| e.path())
-                .filter(|p| p.extension().map_or(false, |ext| ext == "jar"))
-                .map(|p| p.to_string_lossy().to_string())
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    if !jars.is_empty() {
-        classpath = format!("{};{}", classpath, jars.join(";"));
+    // Build classpath: main classes + all dependency JARs
+    let sep = if cfg!(windows) { ";" } else { ":" };
+    let mut cp_parts = vec![main_output.to_string()];
+
+    // Add all JARs from cache
+    if let Ok(entries) = std::fs::read_dir(".rgradle/cache") {
+        for entry in entries.filter_map(|e| e.ok()) {
+            if entry.path().extension().map_or(false, |ext| ext == "jar") {
+                cp_parts.push(entry.path().to_string_lossy().to_string());
+            }
+        }
     }
 
-    let status = Command::new("java")
-        .arg("-cp")
-        .arg(classpath)
-        .arg(main_class)
-        .status()
-        .expect("Failed to run java");
+    let classpath = cp_parts.join(sep);
 
-    if status.success() {
-        println!("✓ Run successful.");
-    } else {
-        eprintln!("✗ Run failed.");
+    // Run the main class
+    let mut cmd = Command::new("java");
+    cmd.arg("-cp")
+        .arg(&classpath)
+        .arg(&config.project.main_class);
+
+    match cmd.status() {
+        Ok(status) if status.success() => {
+            println!("✓ Application finished successfully.");
+        }
+        _ => {
+            eprintln!("✗ Application failed to run.");
+            std::process::exit(1);
+        }
     }
 }

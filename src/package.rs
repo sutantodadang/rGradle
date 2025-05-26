@@ -1,35 +1,58 @@
-use crate::config::Config;
+use crate::config::{Config, SourceSet};
 use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use walkdir::WalkDir;
 
-pub fn package_project(config: &Config, uber: bool) -> io::Result<()> {
-    // First, ensure the project is built
-    crate::build::build_project(config);
-
-    let output_dir = config.project.output_dir.as_deref().unwrap_or("build");
-    let jar_name = format!("{}-{}.jar", config.project.name, config.project.version);
-
-    // Create a temporary directory for packaging
-    let temp_dir = Path::new(output_dir).join("temp_jar");
-    fs::create_dir_all(&temp_dir)?;
-
-    // Copy class files to temp directory, preserving package structure
-    let class_dir = Path::new(output_dir);
-    for entry in WalkDir::new(class_dir).into_iter().filter_map(|e| e.ok()) {
-        if entry.path().extension().map_or(false, |ext| ext == "class") {
-            let rel_path = entry.path().strip_prefix(class_dir).unwrap();
-            let target = temp_dir.join(rel_path);
-            if let Some(parent) = target.parent() {
-                fs::create_dir_all(parent)?;
+fn copy_resources(source_set: &SourceSet, target_dir: &Path) -> io::Result<()> {
+    if let Some(resource_dirs) = &source_set.resources {
+        for resource_dir in resource_dirs {
+            if !Path::new(resource_dir).exists() {
+                continue;
             }
-            fs::copy(entry.path(), target)?;
+            for entry in WalkDir::new(resource_dir).into_iter().filter_map(|e| e.ok()) {
+                if entry.path().is_file() {
+                    let rel_path = entry.path().strip_prefix(resource_dir).unwrap();
+                    let target = target_dir.join(rel_path);
+                    if let Some(parent) = target.parent() {
+                        fs::create_dir_all(parent)?;
+                    }
+                    fs::copy(entry.path(), target)?;
+                }
+            }
         }
     }
+    Ok(())
+}
 
-    // Create META-INF/MANIFEST.MF in temp directory
+pub fn package_project(config: &Config, uber: bool) -> io::Result<()> {
+    // First, ensure the project is built
+    if !crate::build::build_project(config) {
+        return Err(io::Error::new(io::ErrorKind::Other, "Build failed"));
+    }
+
+    let jar_name = format!("{}-{}.jar", config.project.name, config.project.version);
+    let temp_dir = PathBuf::from("build").join("temp_jar");
+    fs::create_dir_all(&temp_dir)?;
+
+    // Copy main classes and resources
+    if let Some(main) = &config.main {
+        let main_output = main.output.as_deref().unwrap_or("build/classes/java/main");
+        for entry in WalkDir::new(main_output).into_iter().filter_map(|e| e.ok()) {
+            if entry.path().is_file() {
+                let rel_path = entry.path().strip_prefix(main_output).unwrap();
+                let target = temp_dir.join(rel_path);
+                if let Some(parent) = target.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::copy(entry.path(), target)?;
+            }
+        }
+        copy_resources(main, &temp_dir)?;
+    }
+
+    // Create META-INF/MANIFEST.MF
     let manifest_dir = temp_dir.join("META-INF");
     fs::create_dir_all(&manifest_dir)?;
     let manifest_path = manifest_dir.join("MANIFEST.MF");
@@ -37,6 +60,7 @@ pub fn package_project(config: &Config, uber: bool) -> io::Result<()> {
     let mut manifest = File::create(&manifest_path)?;
     writeln!(manifest, "Manifest-Version: 1.0")?;
     writeln!(manifest, "Main-Class: {}", config.project.main_class)?;
+    writeln!(manifest)?;  // Required empty line at end of manifest
 
     if uber {
         // Create lib directory for dependencies
@@ -51,64 +75,54 @@ pub fn package_project(config: &Config, uber: bool) -> io::Result<()> {
                 .map(|e| {
                     let jar_name = e.path().file_name().unwrap().to_string_lossy().to_string();
                     let target = lib_dir.join(&jar_name);
-                    fs::copy(e.path(), &target).unwrap_or_else(|_| 0);
-                    format!("lib/{}", jar_name)
+                    fs::copy(e.path(), &target)?;
+                    Ok(format!("lib/{}", jar_name))
                 })
-                .collect()
+                .collect::<io::Result<_>>()?
         } else {
             vec![]
         };
 
+        // Write Class-Path to manifest if we have dependencies
         if !deps.is_empty() {
-            // Write Class-Path with continuation lines (max 72 chars per line)
-            writeln!(manifest, "Class-Path: {}", deps[0])?;
-            let mut current_line = String::new();
-            for dep in deps.iter().skip(1) {
-                if current_line.len() + dep.len() + 1 > 70 {
-                    // 70 to account for space
-                    writeln!(manifest, " {}", current_line.trim())?;
-                    current_line.clear();
+            write!(manifest, "Class-Path:")?;
+            for (i, dep) in deps.iter().enumerate() {
+                if i > 0 && i % 3 == 0 {
+                    // Start a new continuation line every 3 entries
+                    writeln!(manifest)?;
+                    write!(manifest, " ")?;
+                } else if i > 0 {
+                    write!(manifest, " ")?;
                 }
-                if !current_line.is_empty() {
-                    current_line.push(' ');
-                }
-                current_line.push_str(dep);
+                write!(manifest, " {}", dep)?;
             }
-            if !current_line.is_empty() {
-                writeln!(manifest, " {}", current_line.trim())?;
-            }
+            writeln!(manifest)?;
         }
     }
-    writeln!(manifest)?; // Empty line at end of manifest
 
-    // Create the JAR from the temp directory
-    let mut cmd = Command::new("jar");
-    cmd.current_dir(&temp_dir) // Run from temp directory
-        .arg("cfm") // Create JAR with manifest
-        .arg(&jar_name) // Output JAR name
-        .arg("META-INF/MANIFEST.MF") // Manifest file
-        .arg("."); // All contents of current directory
-
+    // Create the JAR
     println!("Creating JAR: {}", jar_name);
-    let status = cmd.status()?;
+    let mut cmd = Command::new("jar");
+    cmd.current_dir(&temp_dir)
+        .arg("cfm")
+        .arg(&jar_name)
+        .arg("META-INF/MANIFEST.MF")
+        .arg(".");
 
-    if status.success() {
-        // Move JAR to project root
-        let source = temp_dir.join(&jar_name);
-        let target = Path::new(&jar_name);
-        if source.exists() {
-            if target.exists() {
-                fs::remove_file(target)?;
-            }
-            fs::rename(source, target)?;
-            // Clean up temp directory
-            fs::remove_dir_all(temp_dir)?;
-            println!("✓ Created {}", jar_name);
-            Ok(())
-        } else {
-            Err(io::Error::new(io::ErrorKind::Other, "JAR file not created"))
-        }
-    } else {
-        Err(io::Error::new(io::ErrorKind::Other, "jar command failed"))
+    let status = cmd.status()?;
+    if !status.success() {
+        return Err(io::Error::new(io::ErrorKind::Other, "jar command failed"));
     }
+
+    // Move JAR to project root and clean up
+    let source = temp_dir.join(&jar_name);
+    let target = Path::new(&jar_name);
+    if target.exists() {
+        fs::remove_file(target)?;
+    }
+    fs::rename(source, target)?;
+    fs::remove_dir_all(&temp_dir)?;
+
+    println!("✓ Created {}", jar_name);
+    Ok(())
 }
