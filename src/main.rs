@@ -43,7 +43,7 @@ output = "build/classes/java/test"
 # example: "org.slf4j:slf4j-api" = "2.0.9"
 
 [test_dependencies]
-"junit:junit" = "4.13.2"
+# example: "junit:junit" = "4.13.2"
 "#;
 
             let mut file = fs::File::create("rgradle.toml").expect("Failed to create rgradle.toml");
