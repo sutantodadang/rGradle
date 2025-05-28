@@ -1502,30 +1502,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74765f6d916ee2faa39bc8e68e4f3ed8949b48cccdac59983d287a7cb71ce9c5"
 
 [[package]]
-name = "rGradle"
-version = "0.1.0"
-dependencies = [
- "async-std",
- "clap",
- "futures",
- "glob",
- "indicatif",
- "num_cpus",
- "quick-xml",
- "rayon",
- "reqwest",
- "semver",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "tokio-stream",
- "toml",
- "walkdir",
- "zip",
-]
-
-[[package]]
 name = "rayon"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1611,6 +1587,30 @@ dependencies = [
  "libc",
  "untrusted",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "rrrGradle"
+version = "0.1.0"
+dependencies = [
+ "async-std",
+ "clap",
+ "futures",
+ "glob",
+ "indicatif",
+ "num_cpus",
+ "quick-xml",
+ "rayon",
+ "reqwest",
+ "semver",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+ "toml",
+ "walkdir",
+ "zip",
 ]
 
 [[package]]

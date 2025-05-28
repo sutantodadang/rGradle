@@ -14,7 +14,7 @@ pub fn run_project(config: &Config) {
     let mut cp_parts = vec![main_output.to_string()];
 
     // Add all JARs from cache
-    if let Ok(entries) = std::fs::read_dir(".rgradle/cache") {
+    if let Ok(entries) = std::fs::read_dir(".rrrgradle/cache") {
         for entry in entries.filter_map(|e| e.ok()) {
             if entry.path().extension().map_or(false, |ext| ext == "jar") {
                 cp_parts.push(entry.path().to_string_lossy().to_string());

@@ -11,7 +11,10 @@ fn copy_resources(source_set: &SourceSet, target_dir: &Path) -> io::Result<()> {
             if !Path::new(resource_dir).exists() {
                 continue;
             }
-            for entry in WalkDir::new(resource_dir).into_iter().filter_map(|e| e.ok()) {
+            for entry in WalkDir::new(resource_dir)
+                .into_iter()
+                .filter_map(|e| e.ok())
+            {
                 if entry.path().is_file() {
                     let rel_path = entry.path().strip_prefix(resource_dir).unwrap();
                     let target = target_dir.join(rel_path);
@@ -60,7 +63,7 @@ pub fn package_project(config: &Config, uber: bool) -> io::Result<()> {
     let mut manifest = File::create(&manifest_path)?;
     writeln!(manifest, "Manifest-Version: 1.0")?;
     writeln!(manifest, "Main-Class: {}", config.project.main_class)?;
-    writeln!(manifest)?;  // Required empty line at end of manifest
+    writeln!(manifest)?; // Required empty line at end of manifest
 
     if uber {
         // Create lib directory for dependencies
@@ -68,7 +71,7 @@ pub fn package_project(config: &Config, uber: bool) -> io::Result<()> {
         fs::create_dir_all(&lib_dir)?;
 
         // Copy all dependency JARs to lib/
-        let deps: Vec<String> = if let Ok(entries) = fs::read_dir(".rgradle/cache") {
+        let deps: Vec<String> = if let Ok(entries) = fs::read_dir(".rrrgradle/cache") {
             entries
                 .filter_map(|e| e.ok())
                 .filter(|e| e.path().extension().map_or(false, |ext| ext == "jar"))

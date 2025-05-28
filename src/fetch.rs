@@ -177,7 +177,7 @@ fn dep_to_url(dep: &str, version: &str) -> Option<(String, String, String)> {
 
 /// Entry point: fetches dependencies listed in config (async, parallel).
 pub async fn fetch_dependencies(config: &Config) {
-    let cache_dir = Path::new(".rgradle/cache/").to_path_buf();
+    let cache_dir = Path::new(".rrrgradle/cache/").to_path_buf();
     fs::create_dir_all(&cache_dir).expect("Failed to create cache dir");
 
     let visited = Arc::new(tokio::sync::Mutex::new(HashSet::new()));

@@ -20,7 +20,7 @@ async fn main() {
 
     match cli.command {
         Commands::Init => {
-            println!("Initializing new rGradle project...");
+            println!("Initializing new rrrGradle project...");
 
             let config = r#"
 [project]
@@ -46,9 +46,10 @@ output = "build/classes/java/test"
 # example: "junit:junit" = "4.13.2"
 "#;
 
-            let mut file = fs::File::create("rgradle.toml").expect("Failed to create rgradle.toml");
+            let mut file =
+                fs::File::create("rrrgradle.toml").expect("Failed to create rrrgradle.toml");
             file.write_all(config.trim_start().as_bytes())
-                .expect("Failed to write rgradle.toml");
+                .expect("Failed to write rrrgradle.toml");
 
             let cfg = load_config();
 
@@ -81,7 +82,7 @@ output = "build/classes/java/test"
             }
 
             println!("Project structure created.");
-            println!("Edit `rgradle.toml` to define your dependencies.");
+            println!("Edit `rrrgradle.toml` to define your dependencies.");
         }
 
         Commands::Fetch => {

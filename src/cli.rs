@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "rGradle")]
+#[command(name = "rrrGradle")]
 #[command(about = "An experimental build tool for Java written in Rust", long_about = None)]
 pub struct Cli {
     #[command(subcommand)]

@@ -196,7 +196,7 @@ fn compile_source_set(
 }
 
 pub fn build_project(config: &Config) -> bool {
-    let cache_dir = ".rgradle/cache";
+    let cache_dir = ".rrrgradle/cache";
 
     // Compile main source set
     let main_success = if let Some(main) = &config.main {
