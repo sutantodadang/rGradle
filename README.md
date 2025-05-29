@@ -1,6 +1,6 @@
 # 🚀 rrrGradle
 
-A blazingly fast, modern build tool for Java projects powered by Rust. rrrGradle combines the simplicity of Gradle with the performance of Rust to deliver an exceptional Java build experience.
+An experimental build tool for Java written in Rust to achieve blazingly fast modern build tool for Java projects powered by Rust. rrrGradle combines the simplicity of Gradle with the performance of Rust to deliver an exceptional Java build experience.
 
 ## ✨ Key Features
 
