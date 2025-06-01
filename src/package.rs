@@ -63,8 +63,8 @@ pub fn package_project(config: &Config, uber: bool) -> io::Result<()> {
     let mut manifest = File::create(&manifest_path)?;
     writeln!(manifest, "Manifest-Version: 1.0")?;
     writeln!(manifest, "Main-Class: {}", config.project.main_class)?;
-    writeln!(manifest)?; // Required empty line at end of manifest
-
+    // The manifest must end with exactly one blank line (no extra blank lines)
+    // So do not call writeln!() again if there are no more attributes
     if uber {
         // Create lib directory for dependencies
         let lib_dir = temp_dir.join("lib");
@@ -102,6 +102,8 @@ pub fn package_project(config: &Config, uber: bool) -> io::Result<()> {
             writeln!(manifest)?;
         }
     }
+
+    writeln!(manifest)?;
 
     // Create the JAR
     println!("Creating JAR: {}", jar_name);
